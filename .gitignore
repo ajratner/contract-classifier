@@ -1,0 +1,11 @@
+*.swp
+*.pyc
+contracts_clj/target
+contracts_clj/classes
+contracts_clj/checkouts
+pom.xml
+pom.xml.asc
+*.jar
+*.class
+contracts_clj/.lein-*
+contracts_clj/.nrepl-port

@@ -1,0 +1,31 @@
+
+Baselines:
+
+1. 
+run on 5K docs / top 41 classes / 80.26% of dataset (374 MB)
+5 fold skf
+HashingVectorizer + LinearSVC
+~ 12 min
+= 73% F1
+
+2.
+run on 5K docs / top 41 classes / 80.26% of dataset (374 MB)
+5 fold skf
+LinearSVC:
+HashingVectorizer = 71.6% (8 min)
+TfidfVectorizer(stopwords='english', min_df=5, max_df=0.5) = 66.2% (4 min)
+
+3.
+run on 5K docs / top 41 classes / 80.26% of dataset (374 MB)
+5 fold skf
+LinearSVC:
+HashingVectorizer = 71.0% (8 min)
+TfidfVectorizer() = 69.3% (4 min, d=31K)
+TfidfVectorizer(stopwords='english') = 69.4% (4 min, d=31K)
+TfidfVectorizer(stopwords='english', min_df=5, max_df=0.5) = 66.2% (4 min, d=16K)
+
+
+Dealing with feature space reduction:
+min_df = 5, max_df = 0.5
+w/ 1000 (687) docs == 8251
+w/ 10000 (8007) docs == 25706
