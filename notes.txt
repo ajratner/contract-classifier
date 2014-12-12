@@ -24,6 +24,21 @@ TfidfVectorizer() = 69.3% (4 min, d=31K)
 TfidfVectorizer(stopwords='english') = 69.4% (4 min, d=31K)
 TfidfVectorizer(stopwords='english', min_df=5, max_df=0.5) = 66.2% (4 min, d=16K)
 
+4.
+run on 5K docs / top 77 classes + porter stemming (580 MB)
+5 fold skf
+LinearSVC:
+HashingVectorizer = 69.1% (8 min)
+TfidfVectorizer(stopwords='english') = 65.9% (4 min, d=37K)
+TfidfVectorizer(stopwords='english', min_df=5, max_df=0.5) = 64.6% (4 min, d=20K)
+
+5.
+Same as above...
+Title: 80%
+Body: 67.4%
+Title+Body: 83.6%
+
+
 
 Dealing with feature space reduction:
 min_df = 5, max_df = 0.5
