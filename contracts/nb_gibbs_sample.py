@@ -59,9 +59,11 @@ class GibbsSampler:
   - class_word_counts[w,j] = the count of words
   """
   
-  def __init__(self, X, y, holdout=0.25):
+  def __init__(self, X, y, alpha=1, beta=1, holdout=0.25):
     print "Initializing..."
     t0 = time()
+    self.alpha = alpha
+    self.beta = beta
     y = remap_idx(y)
     
     # split into train and test
@@ -80,23 +82,35 @@ class GibbsSampler:
     self.log_thetas = np.empty((self.n_classes, self.vocab_size))
     self.class_assignments = np.zeros((self.n_docs, self.n_classes), dtype=int)
 
-    # training data
+    # assemble initial count statistics from the labeled training data
     for i,x in enumerate(self.X_train):
       c = self.y_train[i]
       self.doc_class[i+int(holdout*self.n_docs)] = c
       self.class_doc_counts[c] += 1
       self.class_word_counts[c] += x
 
-    # test data - use the training data counts as theta_c
+    # sample theta based on this
+    self.sample_new_thetas()
+
+    # initialize the document classes by sampling from the cond. prob. given by training data
     for i,x in enumerate(self.X):
-      c = sample_multinomial(self.class_doc_counts / sum(self.class_doc_counts))
+      c = self.sample_new_class(x)
       self.doc_class[i] = c
       self.class_doc_counts[c] += 1
       self.class_word_counts[c] += x
 
-    # sample the theta_w_c based on all data
-    for c in xrange(self.n_classes):
-      self.log_thetas[c] = sample_log_dirichlet(self.class_word_counts[c])
+    """
+    # test data - use the training data counts as theta_c
+    for i,x in enumerate(self.X):
+      p_c = (self.class_doc_counts+self.alpha)/(self.n_docs+(self.n_classes*self.alpha))
+      c = sample_multinomial(p_c)
+      self.doc_class[i] = c
+      self.class_doc_counts[c] += 1
+      self.class_word_counts[c] += x
+    """
+
+    # sample theta again
+    self.sample_new_thetas()
     print "[Finished in %2f seconds]\n" % (time()-t0,)
 
   # get the classes of the documents
@@ -110,6 +124,26 @@ class GibbsSampler:
     for i,y in enumerate(y_pred):
       score += 1.0  if y == self.y[i] else 0.0
     return score / n_test_docs
+  
+  # sample a new class for d_j given word count vector x_j
+  def sample_new_class(self, x):
+    log_cond_p_c = np.repeat(-np.inf, self.n_classes)
+    for ci in xrange(self.n_classes):
+      p_c = (self.class_doc_counts[ci]+self.alpha)/(self.n_docs+(self.n_classes*self.alpha))
+      wp = self.log_thetas[ci] * x
+      log_p_c_w = (wp[~np.isnan(wp)]).sum()
+      log_cond_p_c[ci] = np.log(p_c) + log_p_c_w
+    log_cond_p_c -= log_sum_exp(log_cond_p_c)
+    # NOTE: why is sum(exp(log_cond_p_c)) > 1.0 (e.g. = 1.0000000001) sometimes?
+    sum_p = sum([np.exp(lpc) for lpc in log_cond_p_c])
+    if sum_p > 1.0:
+      log_cond_p_c -= np.log(sum_p)
+    return sample_log_multinomial(log_cond_p_c)
+
+  # sample a new theta based on the current word counts
+  def sample_new_thetas(self):
+    for c in xrange(self.n_classes):
+      self.log_thetas[c] = sample_log_dirichlet(self.class_word_counts[c]+self.beta)
 
   def run_iteration(self):
     for i,x in enumerate(self.X):
@@ -120,23 +154,7 @@ class GibbsSampler:
       self.class_word_counts[c] -= x
 
       # sample a new class for this document
-      log_cond_p_c = np.repeat(-np.inf, self.n_classes)
-      for ci in xrange(self.n_classes):
-        log_p_c = np.log(self.class_doc_counts[ci] / self.n_docs)
-        wp = self.log_thetas[ci] * x
-        log_p_c_w = (wp[~np.isnan(wp)]).sum()
-        log_cond_p_c[ci] = log_p_c + log_p_c_w
-      log_cond_p_c -= log_sum_exp(log_cond_p_c)
-
-      # NOTE: why is sum(exp(log_cond_p_c)) > 1.0 (e.g. = 1.0000000001) sometimes?
-      sum_p = sum([np.exp(lpc) for lpc in log_cond_p_c])
-      if sum_p > 1.0:
-        log_cond_p_c -= np.log(sum_p)
-      c_new = sample_log_multinomial(log_cond_p_c)
-
-      # >>> TESTING
-      #if c != c_new:
-      #  print "doc %s: %s --> %s" % (i, c, c_new)
+      c_new = self.sample_new_class(x)
 
       # add counts related to this document to the new category
       self.doc_class[i] = c_new
@@ -144,8 +162,7 @@ class GibbsSampler:
       self.class_word_counts[c_new] += x
 
     # resample theta_w_c
-    for c in xrange(self.n_classes):
-      self.log_thetas[c] = sample_log_dirichlet(self.class_word_counts[c])
+    self.sample_new_thetas()
 
   def run(self, iters=20, burn_in=0, lag=0):
     maxiter = iters*(1+lag) + burn_in
@@ -167,12 +184,19 @@ class GibbsSampler:
         print "Iteration %s: Accuracy = %.3f" % (it, self.get_accuracy())
       print "[Finished in %2f seconds]\n" % (time()-t0,)
 
+# NOTE: things to try:
+#
+# - divide by zero in line 13?
+# - invalid value in multiply in line 126?
+# - LAPLACE SMOOTHING ------------------------> accuracy from 12% -> 59%!!!
+# - initialization!!!
+
 if __name__ == "__main__":
 
   # Load data
   print "Loading data..."
   dataset = Dataset()
-  dataset.load(1000, n_classes=2)
+  dataset.load(10000, min_per_class=50)
   dataset.preprocess(stem=True, min_chars=3)
   dataset.finalize()
 
@@ -186,4 +210,4 @@ if __name__ == "__main__":
   # run gibbs sampling
   print "Running gibbs sampling..."
   sampler = GibbsSampler(X, y)
-  sampler.run(iters=25, burn_in=25, lag=2)
+  sampler.run(iters=25, burn_in=3, lag=1)
